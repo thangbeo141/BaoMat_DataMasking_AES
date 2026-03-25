@@ -8,18 +8,18 @@ namespace DataMasking
     {
         private static readonly string connString = "workstation id=securitydb_thang.mssql.somee.com;packet size=4096;user id=thangbeo_SQLLogin_1;pwd=cd8x9wi9og;data source=securitydb_thang.mssql.somee.com;persist security info=False;initial catalog=securitydb_thang;TrustServerCertificate=True";
 
-        public static void ExecuteInsert(string name, string phone, string email)
+        public static void ExecuteInsert(string name, string phone, string email, string cccd)
         {
             using (SqlConnection conn = new SqlConnection(connString))
             {
-                string query = "INSERT INTO users (name, phone, email) VALUES (@n, @p, @e)";
+                // Thêm cột cccd vào câu lệnh INSERT
+                string query = "INSERT INTO users (name, phone, email, cccd) VALUES (@n, @p, @e, @c)";
                 using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
-                    cmd.Parameters.Add("@n", SqlDbType.NVarChar, 200).Value = (object)name ?? string.Empty;
-                    // Nới rộng độ dài để chứa chuỗi mã hóa AES
-                    cmd.Parameters.Add("@p", SqlDbType.NVarChar, 255).Value = (object)phone ?? string.Empty;
-                    cmd.Parameters.Add("@e", SqlDbType.NVarChar, 255).Value = (object)email ?? string.Empty;
-
+                    cmd.Parameters.Add("@n", SqlDbType.NVarChar, 200).Value = name ?? string.Empty;
+                    cmd.Parameters.Add("@p", SqlDbType.NVarChar, 255).Value = phone ?? string.Empty;
+                    cmd.Parameters.Add("@e", SqlDbType.NVarChar, 255).Value = email ?? string.Empty;
+                    cmd.Parameters.Add("@c", SqlDbType.NVarChar, 255).Value = cccd ?? string.Empty;
                     conn.Open();
                     cmd.ExecuteNonQuery();
                 }
@@ -30,7 +30,8 @@ namespace DataMasking
         {
             using (SqlConnection conn = new SqlConnection(connString))
             {
-                string query = "SELECT id, name, phone, email FROM users";
+                // Lấy thêm cột cccd từ Database
+                string query = "SELECT id, name, phone, email, cccd FROM users";
                 if (!string.IsNullOrEmpty(keyword)) query += " WHERE name LIKE @kw";
 
                 using (SqlCommand cmd = new SqlCommand(query, conn))
