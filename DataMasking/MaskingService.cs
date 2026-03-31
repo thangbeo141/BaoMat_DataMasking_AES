@@ -59,7 +59,15 @@ namespace DataMasking
             {
                 sw.WriteLine("Họ tên,Số điện thoại,Email,Số CCCD");
                 foreach (DataRow row in dt.Rows)
-                    sw.WriteLine($"\"{row["name"]}\",\"{row["phone"]}\",\"{row["email"]}\",\"{row["cccd"]}\"");
+                {
+                    // Dùng thủ thuật ="giá_trị" để ép Excel hiểu đây là chuỗi Text, giữ nguyên số 0 ở đầu
+                    string name = row["name"].ToString();
+                    string phone = $"=\"{row["phone"]}\"";
+                    string email = $"=\"{row["email"]}\"";
+                    string cccd = $"=\"{row["cccd"]}\"";
+
+                    sw.WriteLine($"\"{name}\",{phone},{email},{cccd}");
+                }
             }
         }
     }
