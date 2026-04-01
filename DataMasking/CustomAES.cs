@@ -50,7 +50,7 @@ namespace DataMasking
         private static readonly byte[] Rcon = new byte[11] { 0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
 
         // 4. TOÁN HỌC TRÊN TRƯỜNG GALOIS
-        private static byte GMul(byte a, byte b)
+        private static byte GMul(byte a, byte b) //Nhân 2 số trong GF(2^8) 
         {
             byte p = 0;
             for (int i = 0; i < 8; i++)
@@ -74,12 +74,12 @@ namespace DataMasking
             for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) state[i, j] = InvSbox[state[i, j]];
         }
 
-        private static void ShiftRows(byte[,] state)
+        private static void ShiftRows(byte[,] state) 
         {
             byte[] temp = new byte[4];
-            for (int i = 1; i < 4; i++)
+            for (int i = 1; i < 4; i++) //dòng 0 giữ nguyên, dòng 1→3 dịch trái
             {
-                for (int j = 0; j < 4; j++) temp[j] = state[i, (j + i) % 4];
+                for (int j = 0; j < 4; j++) temp[j] = state[i, (j + i) % 4];//dịch trái i bước
                 for (int j = 0; j < 4; j++) state[i, j] = temp[j];
             }
         }
@@ -89,12 +89,12 @@ namespace DataMasking
             byte[] temp = new byte[4];
             for (int i = 1; i < 4; i++)
             {
-                for (int j = 0; j < 4; j++) temp[j] = state[i, (j - i + 4) % 4];
+                for (int j = 0; j < 4; j++) temp[j] = state[i, (j - i + 4) % 4];//dịch phải i bước
                 for (int j = 0; j < 4; j++) state[i, j] = temp[j];
             }
         }
 
-        private static void MixColumns(byte[,] state)
+        private static void MixColumns(byte[,] state)//Nhân + XOR trong GF(2^8)
         {
             byte[] temp = new byte[4];
             for (int c = 0; c < 4; c++)
@@ -107,7 +107,7 @@ namespace DataMasking
             }
         }
 
-        private static void InvMixColumns(byte[,] state)
+        private static void InvMixColumns(byte[,] state)//ma trận đảo của MixColumns
         {
             byte[] temp = new byte[4];
             for (int c = 0; c < 4; c++)
@@ -122,10 +122,10 @@ namespace DataMasking
 
         private static void AddRoundKey(byte[,] state, byte[,] roundKey)
         {
-            for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) state[r, c] ^= roundKey[r, c];
+            for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) state[r, c] ^= roundKey[r, c];//XOR với round key
         }
 
-        private static byte[][,] KeyExpansion(byte[] key)
+        private static byte[][,] KeyExpansion(byte[] key)//tạo key cho từng round
         {
             int Nk = key.Length / 4;
             int Nr = Nk + 6;
@@ -155,15 +155,20 @@ namespace DataMasking
 
         private static byte[] EncryptBlock(byte[] input, byte[][,] roundKeys)
         {
-            byte[,] state = new byte[4, 4];
+            byte[,] state = new byte[4, 4];//Chuyển input 16 byte thành ma trận 4x4
             for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) state[r, c] = input[c * 4 + r];
             int Nr = roundKeys.Length - 1;
-            AddRoundKey(state, roundKeys[0]);
+            AddRoundKey(state, roundKeys[0]);//
             for (int round = 1; round < Nr; round++)
             {
-                SubBytes(state); ShiftRows(state); MixColumns(state); AddRoundKey(state, roundKeys[round]);
+                SubBytes(state); //Thay thế mỗi byte bằng giá trị tương ứng trong S-box
+                ShiftRows(state);//Dịch hàng 1→3 sang trái 1→3 bước
+                MixColumns(state);//Trộn cột bằng cách nhân ma trận với ma trận hằng số
+                AddRoundKey(state, roundKeys[round]);//XOR với round key
             }
-            SubBytes(state); ShiftRows(state); AddRoundKey(state, roundKeys[Nr]);
+            SubBytes(state);
+            ShiftRows(state); 
+            AddRoundKey(state, roundKeys[Nr]);
             byte[] output = new byte[16];
             for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) output[c * 4 + r] = state[r, c];
             return output;

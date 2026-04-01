@@ -7,11 +7,20 @@ namespace DataMasking
 {
     public class MaskingService
     {
-        // Khóa bí mật dùng cho thuật toán AES tự chế của bạn
-        private readonly string myKey = "HocVienKyThuatMatMa_SuperKey123";
+        // 1. Khai báo biến chứa Khóa (Tuyệt đối KHÔNG gán cứng chuỗi bí mật ở đây nữa)
+        private readonly string dynamicKey;
 
-        private string EncryptAES(string plainText) => CustomAES.Encrypt(plainText, myKey);
-        private string DecryptAES(string cipherText) => CustomAES.Decrypt(cipherText, myKey);
+        // 2. Hàm khởi tạo (Constructor): "Nhà điều phối" đi lấy chìa khóa
+        public MaskingService()
+        {
+            // Tích hợp hệ thống đẻ khóa động PBKDF2 từ KeyManager.
+            // Giả lập Admin dùng mật khẩu "Admin@123" để đăng nhập hệ thống.
+            dynamicKey = KeyManager.GenerateDynamicKey("Admin@123");
+        }
+
+        // 3. Đưa khóa động vào luồng mã hóa/giải mã của CustomAES
+        private string EncryptAES(string plainText) => CustomAES.Encrypt(plainText, dynamicKey);
+        private string DecryptAES(string cipherText) => CustomAES.Decrypt(cipherText, dynamicKey);
 
         public void AddNewUser(string name, string phone, string email, string cccd)
         {

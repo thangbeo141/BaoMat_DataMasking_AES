@@ -23,22 +23,40 @@ namespace DataMasking
             txtPass = new TextBox() { Location = new Point(120, 82), Width = 200, UseSystemPasswordChar = true };
 
             Button btnLogin = new Button() { Text = "Đăng Nhập", Location = new Point(120, 130), Width = 110, Height = 35 };
-           
 
+            // LOGIC ĐĂNG NHẬP MỚI (KIỂM TRA HASH TỪ DATABASE)
             btnLogin.Click += (s, e) =>
             {
-                if (txtUser.Text == "admin" && txtPass.Text == "123")
-                {
-                    txtPass.Clear(); this.Hide(); new FrmAdmin(this).Show();
-                }
-                else if (txtUser.Text == "nhanvien" && txtPass.Text == "123")
-                {
-                    txtPass.Clear(); this.Hide(); new FrmTech(this).Show();
-                }
-                else MessageBox.Show("Sai tài khoản hoặc mật khẩu!");
-            };
+                string username = txtUser.Text.Trim();
+                string password = txtPass.Text;
 
-        
+                if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+                {
+                    MessageBox.Show("Vui lòng nhập đầy đủ tài khoản và mật khẩu!", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Chọc xuống DB để băm mật khẩu và lấy Role (Quyền) về
+                string role = DatabaseHelper.CheckLoginAndGetRole(username, password);
+
+                if (role == "Admin")
+                {
+                    txtPass.Clear();
+                    this.Hide();
+                    new FrmAdmin(this).Show(); // Truyền 'this' vào nếu form Admin của bạn có tham số
+                }
+                else if (role == "Tech")
+                {
+                    txtPass.Clear();
+                    this.Hide();
+                    new FrmTech(this).Show();  // Truyền 'this' vào nếu form Tech của bạn có tham số
+                }
+                else
+                {
+                    // Lỗi ngầu chuẩn An toàn thông tin
+                    MessageBox.Show("Tài khoản hoặc mật khẩu không chính xác!", "Cảnh báo Bảo mật", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
 
             this.Controls.AddRange(new Control[] { lblUser, txtUser, lblPass, txtPass, btnLogin });
             this.Load += (s, e) => UIHelper.ApplyModernStyle(this);

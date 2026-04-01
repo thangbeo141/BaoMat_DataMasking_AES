@@ -48,6 +48,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CustomSHA256.cs" />
+    <Compile Include="KeyManager.cs" />
     <Compile Include="CustomAES.cs" />
     <Compile Include="DatabaseHelper.cs" />
     <Compile Include="GUI\UIHelper.cs" />
