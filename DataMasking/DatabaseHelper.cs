@@ -1,78 +1,94 @@
 using System;
 using System.Data;
 using System.Data.SqlClient;
+using System.Configuration;
 
 namespace DataMasking
 {
     public static class DatabaseHelper
     {
-        private static readonly string connString = "workstation id=securitydb_thang.mssql.somee.com;packet size=4096;user id=thangbeo_SQLLogin_1;pwd=cd8x9wi9og;data source=securitydb_thang.mssql.somee.com;persist security info=False;initial catalog=securitydb_thang;TrustServerCertificate=True";
+        private static readonly string connString = ConfigurationManager.ConnectionStrings["MySecurityDB"].ConnectionString;
 
-        public static void ExecuteInsert(string name, string phone, string email, string cccd)
+        // 1. Hàm ĐĂNG KÝ: Lưu cả Tài khoản, Pass băm và Dữ liệu cá nhân (đã mã hóa)
+        public static bool ExecuteInsert(string username, string hash, string salt, string role, string name, string phone, string email, string cccd, string encryptedKey)
         {
-            using (SqlConnection conn = new SqlConnection(connString))
+            try
             {
-                
-                string query = "INSERT INTO users (name, phone, email, cccd) VALUES (@n, @p, @e, @c)";
-                using (SqlCommand cmd = new SqlCommand(query, conn))
+                using (SqlConnection conn = new SqlConnection(connString))
                 {
-                    cmd.Parameters.Add("@n", SqlDbType.NVarChar, 200).Value = name ?? string.Empty;
-                    cmd.Parameters.Add("@p", SqlDbType.NVarChar, 255).Value = phone ?? string.Empty;
-                    cmd.Parameters.Add("@e", SqlDbType.NVarChar, 255).Value = email ?? string.Empty;
-                    cmd.Parameters.Add("@c", SqlDbType.NVarChar, 255).Value = cccd ?? string.Empty;
-                    conn.Open();
-                    cmd.ExecuteNonQuery();
-                }
-            }
-        }
-
-        public static DataTable ExecuteSelect(string keyword = "")
-        {
-            using (SqlConnection conn = new SqlConnection(connString))
-            {
-                
-                string query = "SELECT id, name, phone, email, cccd FROM users";
-                if (!string.IsNullOrEmpty(keyword)) query += " WHERE name LIKE @kw";
-
-                using (SqlCommand cmd = new SqlCommand(query, conn))
-                {
-                    if (!string.IsNullOrEmpty(keyword))
-                        cmd.Parameters.AddWithValue("@kw", "%" + keyword + "%");
-
-                    using (SqlDataAdapter da = new SqlDataAdapter(cmd))
+                    string query = "INSERT INTO users (Username, PasswordHash, PasswordSalt, Role, name, phone, email, cccd, EncryptedKey) " +
+                                   "VALUES (@u, @h, @s, @r, @n, @p, @e, @c, @k)";
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
-                        DataTable dt = new DataTable();
-                        da.Fill(dt);
-                        return dt;
+                        cmd.Parameters.AddWithValue("@u", username);
+                        cmd.Parameters.AddWithValue("@h", hash);
+                        cmd.Parameters.AddWithValue("@s", salt);
+                        cmd.Parameters.AddWithValue("@r", role);
+                        cmd.Parameters.AddWithValue("@n", name);
+                        cmd.Parameters.AddWithValue("@p", phone);
+                        cmd.Parameters.AddWithValue("@e", email);
+                        cmd.Parameters.AddWithValue("@c", cccd);
+                        cmd.Parameters.AddWithValue("@k", encryptedKey);
+                        conn.Open();
+                        return cmd.ExecuteNonQuery() > 0;
                     }
                 }
             }
+            catch { return false; }
         }
 
-        public static void ExecuteDelete(int id)
+        // 2. ADMIN: Load toàn bộ danh sách khách hàng
+        public static DataTable LayDanhSachUsers(string keyword = "")
         {
-            using (SqlConnection conn = new SqlConnection(connString))
+            DataTable dt = new DataTable();
+            try
             {
-                string query = "DELETE FROM users WHERE id = @id";
-                using (SqlCommand cmd = new SqlCommand(query, conn))
+                using (SqlConnection conn = new SqlConnection(connString))
                 {
-                    cmd.Parameters.Add("@id", SqlDbType.Int).Value = id;
                     conn.Open();
-                    cmd.ExecuteNonQuery();
+                    string query = "SELECT id, Username, name, phone, email, cccd, EncryptedKey FROM users WHERE IsActive = 1 AND Role = 'Customer'";
+                    if (!string.IsNullOrEmpty(keyword)) query += " AND name LIKE @keyword";
+
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    {
+                        if (!string.IsNullOrEmpty(keyword)) cmd.Parameters.AddWithValue("@keyword", "%" + keyword + "%");
+                        using (SqlDataAdapter da = new SqlDataAdapter(cmd)) da.Fill(dt);
+                    }
                 }
             }
+            catch { }
+            return dt;
         }
 
+        // 3. KHÁCH HÀNG: Chỉ Load đúng 1 dòng dữ liệu của chính họ
+        public static DataTable LayDuLieuCuaToi(string username)
+        {
+            DataTable dt = new DataTable();
+            try
+            {
+                using (SqlConnection conn = new SqlConnection(connString))
+                {
+                    conn.Open();
+                    string query = "SELECT name, phone, email, cccd, EncryptedKey FROM users WHERE IsActive = 1 AND Username = @u";
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@u", username);
+                        using (SqlDataAdapter da = new SqlDataAdapter(cmd)) da.Fill(dt);
+                    }
+                }
+            }
+            catch { }
+            return dt;
+        }
+
+        // 4. KIỂM TRA ĐĂNG NHẬP
         public static string CheckLoginAndGetRole(string username, string rawPassword)
         {
-            string dbHash = "";
-            string dbSalt = "";
-            string role = "";
-
-            // 1. Chọc xuống DB lấy Hash, Salt và Role lên trước
+            string dbHash = "", dbSalt = "", role = "";
             using (SqlConnection conn = new SqlConnection(connString))
             {
-                string query = "SELECT PasswordHash, PasswordSalt, Role FROM SystemAccounts WHERE Username = @u";
+                // Giờ ta check luôn trong bảng users
+                string query = "SELECT PasswordHash, PasswordSalt, Role FROM users WHERE Username = @u AND IsActive = 1";
                 using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
                     cmd.Parameters.AddWithValue("@u", username);
@@ -85,34 +101,33 @@ namespace DataMasking
                             dbSalt = reader["PasswordSalt"].ToString();
                             role = reader["Role"].ToString();
                         }
-                        else
-                        {
-                            return null; // Không tìm thấy tài khoản
-                        }
+                        else return null;
                     }
                 }
             }
 
-            // 2. BĂM MẬT KHẨU + MUỐI BẰNG THUẬT TOÁN SHA-256 DO MÌNH TỰ CODE
-            
             string hashInput = CustomSHA256.ComputeHash(rawPassword + dbSalt);
+            if (hashInput == dbHash) return role;
+            return null;
+        }
 
-            //// 🔴 ĐẶT BẪY DEBUG Ở ĐÂY 🔴
-            //System.Windows.Forms.MessageBox.Show(
-            //    $"1. Pass gõ vào: '{rawPassword}'\n" +
-            //    $"2. Muối từ DB: '{dbSalt}'\n" +
-            //    $"3. Chuỗi đem băm: '{rawPassword + dbSalt}'\n\n" +
-            //    $"4. Mã Hash C# tính ra:\n{hashInput}\n\n" +
-            //    $"5. Mã Hash đang lưu ở DB:\n{dbHash}",
-            //    "Phân tích Lỗi Đăng nhập"
-            //);
-            // 3. So sánh Hash vừa tính với Hash lưu trong DB
-            if (hashInput == dbHash)
+        public static bool XoaUser(string idUser)
+        {
+            // (Giữ nguyên như cũ)
+            try
             {
-                return role; // Khớp 100%, trả về quyền
+                using (SqlConnection conn = new SqlConnection(connString))
+                {
+                    conn.Open();
+                    string query = "UPDATE users SET IsActive = 0 WHERE ID = @ID";
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@ID", idUser);
+                        return cmd.ExecuteNonQuery() > 0;
+                    }
+                }
             }
-
-            return null; // Sai mật khẩu
+            catch { return false; }
         }
     }
 }

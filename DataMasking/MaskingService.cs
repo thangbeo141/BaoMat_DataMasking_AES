@@ -7,59 +7,80 @@ namespace DataMasking
 {
     public class MaskingService
     {
-        // 1. Khai báo biến chứa Khóa (Tuyệt đối KHÔNG gán cứng chuỗi bí mật ở đây nữa)
-        private readonly string dynamicKey;
-
-        // 2. Hàm khởi tạo (Constructor): "Nhà điều phối" đi lấy chìa khóa
-        public MaskingService()
+        // 1. KHÁCH HÀNG ĐĂNG KÝ TÀI KHOẢN MỚI
+        public bool RegisterCustomer(string username, string password, string name, string phone, string email, string cccd)
         {
-            // Tích hợp hệ thống đẻ khóa động PBKDF2 từ KeyManager.
-            // Giả lập Admin dùng mật khẩu "Admin@123" để đăng nhập hệ thống.
-            dynamicKey = KeyManager.GenerateDynamicKey("Admin@123");
+            // --- PHẦN A: BẢO MẬT ĐĂNG NHẬP ---
+            string salt = Guid.NewGuid().ToString("N");
+            string hash = CustomSHA256.ComputeHash(password + salt); // Băm mật khẩu để login
+
+            // --- PHẦN B: BẢO MẬT DỮ LIỆU (ZERO-KNOWLEDGE) ---
+            string customerKEK = KeyManager.GenerateDynamicKey(password); // Khóa KEK sinh từ Pass
+            string userDEK = Guid.NewGuid().ToString("N"); // Khóa DEK dùng để mã hóa Data
+
+            string encPhone = CustomAES.Encrypt(phone, userDEK);
+            string encEmail = CustomAES.Encrypt(email, userDEK);
+            string encCCCD = CustomAES.Encrypt(cccd, userDEK);
+
+            string encryptedDEK = CustomAES.Encrypt(userDEK, customerKEK); // Khóa DEK lại bằng KEK
+
+            // Lưu tất cả xuống DB với quyền là 'Customer'
+            return DatabaseHelper.ExecuteInsert(username, hash, salt, "Customer", name, encPhone, encEmail, encCCCD, encryptedDEK);
         }
 
-        // 3. Đưa khóa động vào luồng mã hóa/giải mã của CustomAES
-        private string EncryptAES(string plainText) => CustomAES.Encrypt(plainText, dynamicKey);
-        private string DecryptAES(string cipherText) => CustomAES.Decrypt(cipherText, dynamicKey);
-
-        public void AddNewUser(string name, string phone, string email, string cccd)
-        {
-            // MÃ HÓA TẤT CẢ TRƯỚC KHI LƯU XUỐNG DB (Data-at-Rest)
-            DatabaseHelper.ExecuteInsert(name, EncryptAES(phone), EncryptAES(email), EncryptAES(cccd));
-        }
-
+        // 2. ADMIN XEM DỮ LIỆU (BỊ MÙ TRƯỚC DỮ LIỆU NHẠY CẢM)
         public DataTable GetAdminData(string keyword = "")
         {
-            DataTable dt = DatabaseHelper.ExecuteSelect(keyword);
+            DataTable dt = DatabaseHelper.LayDanhSachUsers(keyword);
             foreach (DataRow row in dt.Rows)
             {
-                // ADMIN: Giải mã để xem dữ liệu gốc cho cả 3 trường
-                row["phone"] = DecryptAES(row["phone"].ToString());
-                row["email"] = DecryptAES(row["email"].ToString());
-                row["cccd"] = DecryptAES(row["cccd"].ToString());
+                // Admin không có mật khẩu của khách -> Không có KEK -> Bất lực toàn tập
+                row["phone"] = "********";
+                row["email"] = "********";
+                row["cccd"] = "********";
             }
+
+            if (dt.Columns.Contains("EncryptedKey")) dt.Columns.Remove("EncryptedKey");
             return dt;
         }
 
-        public DataTable GetTechData(string keyword = "")
+        // 3. KHÁCH HÀNG XEM DỮ LIỆU CỦA CHÍNH MÌNH
+        public DataTable GetMyData(string username, string myPassword)
         {
-            DataTable dt = DatabaseHelper.ExecuteSelect(keyword);
-            foreach (DataRow row in dt.Rows)
+            DataTable dt = DatabaseHelper.LayDuLieuCuaToi(username);
+
+            if (dt.Rows.Count > 0)
             {
-                // NHÂN VIÊN: Giải mã xong đắp mặt nạ ngay (Data-in-Use)
-                row["phone"] = MaskPhone(DecryptAES(row["phone"].ToString()));
-                row["email"] = MaskEmail(DecryptAES(row["email"].ToString()));
-                row["cccd"] = MaskCCCD(DecryptAES(row["cccd"].ToString()));
+                DataRow row = dt.Rows[0];
+                try
+                {
+                    // Lấy mật khẩu khách vừa nhập để tái tạo KEK và mở bao thư
+                    string customerKEK = KeyManager.GenerateDynamicKey(myPassword);
+                    string encryptedDEK = row["EncryptedKey"].ToString();
+                    string userDEK = CustomAES.Decrypt(encryptedDEK, customerKEK);
+
+                    // Giải mã thành công
+                    row["phone"] = CustomAES.Decrypt(row["phone"].ToString(), userDEK);
+                    row["email"] = CustomAES.Decrypt(row["email"].ToString(), userDEK);
+                    row["cccd"] = CustomAES.Decrypt(row["cccd"].ToString(), userDEK);
+                }
+                catch
+                {
+                    row["phone"] = "LỖI GIẢI MÃ";
+                    row["email"] = "LỖI GIẢI MÃ";
+                    row["cccd"] = "LỖI GIẢI MÃ";
+                }
             }
+
+            if (dt.Columns.Contains("EncryptedKey")) dt.Columns.Remove("EncryptedKey");
             return dt;
         }
 
-        // Quy tắc mặt nạ cho 3 loại dữ liệu nhạy cảm
-        private string MaskPhone(string p) => (p.Length > 6) ? p.Substring(0, 3) + "***" + p.Substring(p.Length - 3) : p;
-        private string MaskEmail(string e) => e.Contains("@") ? e.Split('@')[0].Substring(0, 1) + "***@" + e.Split('@')[1] : e;
-        private string MaskCCCD(string c) => (c.Length > 6) ? c.Substring(0, 6) + "******" : c;
+        // =======================================================
+        // 4. HAI HÀM NÀY BỊ THIẾU NÊN FRMADMIN BÁO LỖI NÀY THẮNG ƠI
+        // =======================================================
 
-        public void DeleteUser(int id) => DatabaseHelper.ExecuteDelete(id);
+        public void DeleteUser(int id) => DatabaseHelper.XoaUser(id.ToString());
 
         public void ExportToFile(DataTable dt, string fileName)
         {
@@ -69,12 +90,10 @@ namespace DataMasking
                 sw.WriteLine("Họ tên,Số điện thoại,Email,Số CCCD");
                 foreach (DataRow row in dt.Rows)
                 {
-                    // Dùng thủ thuật ="giá_trị" để ép Excel hiểu đây là chuỗi Text, giữ nguyên số 0 ở đầu
                     string name = row["name"].ToString();
                     string phone = $"=\"{row["phone"]}\"";
                     string email = $"=\"{row["email"]}\"";
                     string cccd = $"=\"{row["cccd"]}\"";
-
                     sw.WriteLine($"\"{name}\",{phone},{email},{cccd}");
                 }
             }
