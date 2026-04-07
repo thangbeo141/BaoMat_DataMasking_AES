@@ -50,6 +50,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CustomSHA256.cs" />
+    <Compile Include="GUI\FrmAuditLog.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="GUI\FrmRegister.cs">
       <SubType>Form</SubType>
     </Compile>

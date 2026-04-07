@@ -202,7 +202,12 @@ namespace DataMasking
         public static string Encrypt(string plainText, string keyString)
         {
             if (string.IsNullOrEmpty(plainText)) return plainText;
-            byte[] key = Encoding.UTF8.GetBytes(keyString.PadRight(32, '0').Substring(0, 32));
+
+            // Lấy chính xác số ký tự khóa khách hàng nhập vào (16, 24 hoặc 32)
+            byte[] key = Encoding.UTF8.GetBytes(keyString);
+            if (key.Length != 16 && key.Length != 24 && key.Length != 32)
+                throw new ArgumentException("Khóa AES phải dài đúng 16, 24 hoặc 32 byte!");
+
             byte[][,] roundKeys = KeyExpansion(key);
             byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
             int paddingLength = 16 - (plainBytes.Length % 16);
@@ -224,7 +229,10 @@ namespace DataMasking
             if (string.IsNullOrEmpty(cipherText)) return cipherText;
             try
             {
-                byte[] key = Encoding.UTF8.GetBytes(keyString.PadRight(32, '0').Substring(0, 32));
+                byte[] key = Encoding.UTF8.GetBytes(keyString);
+                // Bắt lỗi nếu Admin nhập sai độ dài khóa
+                if (key.Length != 16 && key.Length != 24 && key.Length != 32) return cipherText;
+
                 byte[][,] roundKeys = KeyExpansion(key);
                 byte[] cipherBytes = Convert.FromBase64String(cipherText);
                 List<byte> plainBytes = new List<byte>();

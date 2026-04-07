@@ -42,9 +42,10 @@ namespace DataMasking
 
                 if (role == "Admin")
                 {
-                    txtPass.Clear();
                     this.Hide();
-                    new FrmAdmin(this).Show();
+                    // TRUYỀN THÊM: Username và Password vào Form Admin
+                    new FrmAdmin(this, username, password).Show();
+                    txtPass.Clear();
                 }
                 else if (role == "Customer") // Chuyển luồng Tech thành Customer
                 {
